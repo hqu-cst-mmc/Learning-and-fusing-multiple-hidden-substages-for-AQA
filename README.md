@@ -2,11 +2,6 @@
 
 This is the code, data and implementation for the paper "[Learning and fusing multiple hidden substages for AQA](https://www.sciencedirect.com/science/article/abs/pii/S095070512100650X)".
 
-# Usage
-
-
-
-
 
 # Acknowledgement
 -  The P3D model (with weights pre-trained on kinetics) is revised from [P3D-Pytorch](https://github.com/qijiezhao/pseudo-3d-pytorch) by qijiezhao.
