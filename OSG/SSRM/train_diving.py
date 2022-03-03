@@ -3,7 +3,7 @@ import logging
 import os
 from os import listdir
 from os.path import isfile, join, isdir
-import time
+
 import torch
 import torch.nn as nn
 from torch import cuda
@@ -15,7 +15,7 @@ import torchvision
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils
-
+import time
 # import matplotlib.pyplot as plt
 import numpy as np
 import random
@@ -39,14 +39,15 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S', level=logging.INFO)
 parser = argparse.ArgumentParser(description="Diving")
 
+writer1 = SummaryWriter('runs/exp/')
 
 parser.add_argument("--load", default=0, type=int,
                     help="Load saved network weights. 0 represent don't load; other number represent the model number")
 parser.add_argument("--save", default=0, type=int,
                     help="Save network weights. 0 represent don't save; number represent model number")
-parser.add_argument("--epochs", default=300, type=int,
+parser.add_argument("--epochs", default=90, type=int,
                     help="Epochs through the data. (default=65)")
-parser.add_argument("--learning_rate", "-lr", default=0.0001, type=float,
+parser.add_argument("--learning_rate", "-lr", default=0.0009, type=float,
                     help="Learning rate of the optimization. (default=0.0001)")
 parser.add_argument("--batch_size", default=8, type=int,
                     help="Batch size for training. (default=16)")
@@ -62,7 +63,7 @@ parser.add_argument("--only_last_layer", default=0, type=int,
                     help="whether choose to freezen the parameters for all the layers except the linear layer on the pre-trained model")
 parser.add_argument("--normalize", default=1, type=int,
                     help="do the normalize for the images")
-parser.add_argument("--lr_steps", default=[20, 90], type=int, nargs="+",
+parser.add_argument("--lr_steps", default=[30, 60], type=int, nargs="+",
                     help="steps to decay learning rate")
 parser.add_argument("--use_trained_model", default=1, type=int,
                     help="whether use the pre-trained model on kinetics or not")
@@ -70,7 +71,7 @@ parser.add_argument("--random", default=0, type=int,
                     help="random sapmling in training")
 parser.add_argument("--test", default=0, type=int,
                     help="whether get into the whole test mode (not recommend) ")
-parser.add_argument("--stop", default=0.83, type=float,
+parser.add_argument("--stop", default=0.88, type=float,
                     help="Perform early stop")
 parser.add_argument("--tcn_range", default=[1, 2, 3, 4, 5], type=list,
                     help="which part of tcn to use (0 is not using)")
@@ -81,21 +82,12 @@ parser.add_argument("--region", default=0, type=int,
 parser.add_argument("--allstage", default=1, type=int,
                     help="sampled cover all stage")
 
-# def setup_seed(seed):
-#     torch.manual_seed(seed)
-#     torch.cuda.manual_seed_all(seed)
-#     np.random.seed(seed)
-#     random.seed(seed)
-#     torch.backends.cudnn.deterministic = True
-#
-# setup_seed(20)
 
 def main(options):
     # Path to the directories of features and labels
     train_file = './data_files/training_idx.npy'
     test_file = './data_files/testing_idx.npy'
-    data_folder = './frames'
-    diff_file = './data_files/difficulty_level.npy'
+    data_folder = '/home/donglijia/dlj/diving-score-master/frames'
 
     range_file = './data_files/tcn_time_point.npy'
     if options.task == "score":
@@ -112,10 +104,10 @@ def main(options):
         transformations = transforms.Compose([transforms.Scale((options.size, options.size)),
                                               transforms.ToTensor()
                                               ])
-    # 加载数据
+    # 这步加载数据的
     #     if options.allstage:
     #         for stage in range(1,5):
-    dset_train = divingDataset(data_folder, train_file, label_file, diff_file, range_file, transformations,
+    dset_train = divingDataset(data_folder, train_file, label_file, range_file, transformations,
                                tcn_range=options.tcn_range, random=options.random, size=options.size,
                                downsample=options.downsample, region=options.region, allstage=options.allstage)
     # else:
@@ -125,17 +117,14 @@ def main(options):
 
     if options.test:
         # print 'test in train'
-        dset_test = divingDataset(data_folder, test_file, label_file, diff_file, range_file, transformations, test=1,
+        dset_test = divingDataset(data_folder, test_file, label_file, range_file, transformations, test=1,
                                   tcn_range=options.tcn_range,
                                   size=options.size)
         options.batch_size = 10
     else:
         # print 'no test in train'
-
-        writer1 = SummaryWriter('runs/exp/train')
-        writer2 = SummaryWriter('runs/exp/test')
-        dset_test = divingDataset(data_folder, test_file, label_file, diff_file,range_file, transformations,
-                                  tcn_range=options.tcn_range, random=options.random, test=1, size=options.size,
+        dset_test = divingDataset(data_folder, test_file, label_file, range_file, transformations,
+                                  tcn_range=options.tcn_range, random=options.random, test=0, size=options.size,
                                   downsample=options.downsample, region=options.region, allstage=options.allstage)
 
     train_loader = DataLoader(dset_train,
@@ -145,7 +134,7 @@ def main(options):
 
     test_loader = DataLoader(dset_test,
                              # batch_size=int(options.batch_size/2),
-                             batch_size=options.batch_size ,
+                             batch_size=int(options.batch_size*2) ,
                              shuffle=True,
                              )
 
@@ -182,7 +171,7 @@ def main(options):
     start_epoch = 0
     if options.load:
         logging.info("=> loading checkpoint" + str(options.load) + ".tar")
-        checkpoint = torch.load('./result/res-【最终版】-0.76/checkpoint' + str(options.load) + '.tar')
+        checkpoint = torch.load('./result/res-最终版-0.76/checkpoint' + str(options.load) + '.tar')
         start_epoch = checkpoint['epoch']
         model.load_state_dict(checkpoint['state_dict1'])
         ttc_model.load_state_dict(checkpoint['state_dict2'])
@@ -226,15 +215,15 @@ def main(options):
                 for it, train_data in enumerate(train_loader, 0):
                     loss_sum = 0
                     # 每个it里8个batch
+                    train_output_sum = 0
                     vid_tensor_sum = []
                     vid_tensor_save = []
                     for tcncover in range(1, 6):
-                        vid_tensor, labels, diffs = train_data
+                        vid_tensor, labels = train_data
                         if use_cuda:
-                            vid_tensor_single, labels_single, diffs_single = Variable(vid_tensor[tcncover - 1]).cuda(), Variable(
-                                labels[tcncover - 1]).cuda(),Variable(diffs[tcncover - 1]).cuda()
+                            vid_tensor_single, labels_single = Variable(vid_tensor[tcncover - 1]).cuda(), Variable(
+                                labels[tcncover - 1]).cuda()
                             labels_single = labels_single[:,np.newaxis]
-                            diffs_single = diffs_single[:,np.newaxis]
                             # print('vid_tensor:', vid_tensor)
                             # print('labels:', labels)
                         else:
@@ -249,7 +238,9 @@ def main(options):
                     ## train_output_sum [2,10240]
                     ttc_model.train()
                     train_output_sum = ttc_model(train_output_sum)
-                    train_output_sum = train_output_sum * 30 * diffs_single
+                    # torch.cuda.empty_cache()
+                    ## train_output_sum [2,1]
+                    # weights_tscore = ttc_model.fc1.weight.data.cpu().numpy()
                     loss = criterion(train_output_sum, labels_single)
                     all_train_output = np.append(all_train_output, train_output_sum.data.cpu().numpy()[:, 0])
                     all_labels = np.append(all_labels, labels_single.data.cpu().numpy())
@@ -267,12 +258,6 @@ def main(options):
                 scheduler.step()
                     #Variable转成numpy
                 train_avg_loss = (train_loss / (len(dset_train) / options.batch_size))
-
-                f = open('./result/train—loss.txt', mode='a')
-                f.write('\n' + 'train loss at epoch' + str(epoch_i) + ':' + '\n')
-                f.write(str(train_avg_loss))
-                f.write('\n')
-
                 rho, p_val = spearmanr(all_train_output, all_labels)
                 logging.info(
                     "Average training loss value per instance is {0}, the corr is {1} at the end of epoch {2}".format(
@@ -284,7 +269,7 @@ def main(options):
                 # f.write('weights of 5scores:' + str(weights_tscore[0]))
                 # f.write('\n')
 
-                writer1.add_scalar('10240features-concat-deeper-execution', train_avg_loss, epoch_i + 1)
+                writer1.add_scalar('diving-concated-5features-batch_6', train_avg_loss, epoch_i + 1)
 
                 if options.save:
                     torch.save({
@@ -306,11 +291,10 @@ def main(options):
                         vid_tensor_sum = 0
                         vid_tensor_save = []
                         for tcncover in range(1, 6):
-                            vid_tensor, labels,diffs = test_data
+                            vid_tensor, labels = test_data
                             if use_cuda:
-                                vid_tensor_single, labels_single,diffs_single= Variable(vid_tensor[tcncover - 1]).cuda(), Variable(labels[tcncover - 1]).cuda(),Variable(diffs[tcncover - 1]).cuda()
+                                vid_tensor_single, labels_single = Variable(vid_tensor[tcncover - 1]).cuda(), Variable(labels[tcncover - 1]).cuda()
                                 labels_single = labels_single[:,np.newaxis]
-                                diffs_single = diffs_single[:,np.newaxis]
                             else:
                                 vid_tensor, labels = Variable(vid_tensor), Variable(labels)
                             test_output = model(vid_tensor_single)
@@ -318,7 +302,6 @@ def main(options):
                         test_output_sum = torch.cat((vid_tensor_save[0], vid_tensor_save[1],
                                                         vid_tensor_save[2], vid_tensor_save[3], vid_tensor_save[4]), 1)
                         test_output_sum = ttc_model(test_output_sum)
-                        test_output_sum = test_output_sum *30 *diffs_single
                         loss = criterion(test_output_sum, labels_single)
                         all_test_output = np.append(all_test_output, test_output_sum.data.cpu().numpy()[:, 0])
                         all_labels = np.append(all_labels, labels_single.data.cpu().numpy())
@@ -345,45 +328,9 @@ def main(options):
                     # print('test_corr=',test_corr)
                     all_test_loss = np.append(all_test_loss, test_avg_loss)
 
-                    writer2.add_scalar('10240features-concat-deeper-execution', test_avg_loss, epoch_i + 1)
-
                     if rho > options.stop:
                         break
 
-        #######################################################################################################################
-        # the last test for visualization
-        # model.eval()
-        # test_loss = 0.0
-        # all_test_output = []
-        # all_labels = []
-        # for it, test_data in enumerate(test_loader, 0):
-        #     test_output_sum = []
-        #     for tcncover in range(1, 6):
-        #         vid_tensor, labels = test_data
-        #         if use_cuda:
-        #             vid_tensor_single, labels_single = Variable(vid_tensor[tcncover-1]).cuda(), Variable(labels[tcncover -1 ]).cuda()
-        #             labels_single = labels_single[:, np.newaxis]
-        #         else:
-        #             vid_tensor, labels = Variable(vid_tensor), Variable(labels)
-        #         if (tcncover == 1):
-        #             vid_tensor_sum = vid_tensor_single
-        #         else:
-        #             vid_tensor_sum = torch.cat((vid_tensor_sum, vid_tensor_single), 2)
-        #     m = nn.MaxPool3d((5, 1, 1), stride=(5, 1, 1))
-        #     vid_tensor_sum = m(vid_tensor_sum)
-        #     test_output = model(vid_tensor_sum)
-        #     test_output = test_output[0]
-        #     test_output_sum += test_output
-        #     loss = criterion(test_output_sum, labels_single)
-        #     all_test_output = np.append(all_test_output, test_output_sum.data.cpu().numpy()[:, 0])
-        #     all_labels = np.append(all_labels, labels_single.data.cpu().numpy())
-        #     test_loss += loss.item()
-        #
-        #
-        # test_avg_loss = test_loss / (len(dset_test) / options.batch_size)
-        #
-        # rho, p_val = spearmanr(all_test_output, all_labels)
-        # logging.info("Average test loss value per instance is {0}, the corr is {1}".format(test_avg_loss, rho))
         epoch_range = []
         for i in range(0, epoch_i + 1):
             epoch_range.append(i)
@@ -397,8 +344,9 @@ def main(options):
             all_corr = []
             all_mse = []
             all_mde = []
-            all_times =[]
-            for test_time in range(0,35):
+            all_times = []
+            for timestep in range(0,35):
+
                 model.eval()
                 ttc_model.eval()
                 test_loss = 0.0
@@ -410,13 +358,11 @@ def main(options):
                     vid_tensor_sum = 0
                     vid_tensor_save = []
                     for tcncover in range(1, 6):
-                        vid_tensor, labels, diffs = test_data
+                        vid_tensor, labels = test_data
                         if use_cuda:
-                            vid_tensor_single, labels_single, diffs_single = Variable(
-                                vid_tensor[tcncover - 1]).cuda(), Variable(labels[tcncover - 1]).cuda(), Variable(
-                                diffs[tcncover - 1]).cuda()
+                            vid_tensor_single, labels_single = Variable(vid_tensor[tcncover - 1]).cuda(), Variable(
+                                labels[tcncover - 1]).cuda()
                             labels_single = labels_single[:, np.newaxis]
-                            diffs_single = diffs_single[:, np.newaxis]
                         else:
                             vid_tensor, labels = Variable(vid_tensor), Variable(labels)
                         test_output = model(vid_tensor_single)
@@ -424,40 +370,37 @@ def main(options):
                     test_output_sum = torch.cat((vid_tensor_save[0], vid_tensor_save[1],
                                                  vid_tensor_save[2], vid_tensor_save[3], vid_tensor_save[4]), 1)
                     test_output_sum = ttc_model(test_output_sum)
-                    test_output_sum = test_output_sum * 30 * diffs_single
+                    loss = criterion(test_output_sum, labels_single)
                     all_test_output = np.append(all_test_output, test_output_sum.data.cpu().numpy()[:, 0])
                     all_labels = np.append(all_labels, labels_single.data.cpu().numpy())
-                    for i in range(len(labels_single.data.cpu().numpy())):
-                        f = open('./result-review1/res_for_test.txt', mode='a')
-                        f.write(
-                            '\n' + str(test_output_sum[i].data.cpu().numpy()) + '-' + str(
-                                labels_single.data.cpu().numpy()[i]))
                     # for i in range(len(labels_single.data.cpu().numpy())):
                     #     logging.info(
                     #         "{0}-{1}".format(test_output_sum.data.cpu().numpy()[i], labels_single.data.cpu().numpy()[i]))
 
                 rho, p_val = spearmanr(all_test_output, all_labels)
-                elapse_time = time.time() - start_time
                 n = len(all_labels)
                 mse = sum(np.square(all_labels - all_test_output)) / n
-                med = sum(np.abs(all_labels - all_test_output)) / n
+                mde = sum(np.abs(all_labels - all_test_output)) / n
+                # mde1 = sum(np.abs(all_labels - all_test_output)) / n
+                elapse_time = time.time() - start_time
                 logging.info(
-                    "TEST TIME {0} ==> The corr is {1} , the MSE is {2}, the overall Med is {3}, elapse time is {4}".format(
-                        test_time, rho, mse, med, elapse_time))
+                    "TEST TIME {0} ==> The corr is {1} , the MSE is {2}, the overall MDE is {3}, elapse time is {4}".format(
+                        timestep, rho, mse, mde, elapse_time))
                 f = open('./result-review1/metrics1.txt', mode='a')
-                f.write('\n' + str(test_time) + '-' + 'rho:' + str(rho) + '-' + 'mse:' + str(mse)+ '-' + 'med:' + str(med)+ '-' + 'time:' + str(elapse_time))
-                # logging.info("the corr in time{0} is {1}".format(test_time,rho))
+                f.write('\n' + str(timestep) + '-' + 'rho:' + str(rho) + '-' + 'mse:' + str(mse) + '-' + 'med:' + str(
+                    mde) + '-' + 'elapse time:' + str(elapse_time))
                 all_corr = np.append(all_corr, rho)
                 all_mse = np.append(all_mse, mse)
-                all_mde = np.append(all_mde, med)
+                all_mde = np.append(all_mde, mde)
                 all_times = np.append(all_times, elapse_time)
             avg_corr = np.average(all_corr)
             avg_mse = np.average(all_mse)
             avg_mde = np.average(all_mde)
             avg_time = np.average(all_times)
             logging.info(
-                "Average corr is {0}, MSE is {1}, MED is {2}, avg_time is {3}".format(
+                "Average corr is {0}, MSE is {1},overall MDE is {2}, avg time is {3}".format(
                     avg_corr, avg_mse, avg_mde, avg_time))
+
 
 if __name__ == "__main__":
     ret = parser.parse_known_args()
